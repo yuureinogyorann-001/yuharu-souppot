@@ -739,7 +739,7 @@ body {
     opacity: 0;
     pointer-events: none;
 
-	transition: opacity 450ms cubic-bezier(0.22, 1, 0.36, 1);}
+	transition: opacity 1000ms cubic-bezier(0.22, 1, 0.36, 1);}
 
 /* 白屏覆盖画面 */
 #vn-transition-overlay.is-active {
@@ -965,6 +965,7 @@ body {
         return document.getElementById("vn-frame");
     }
 
+
     function updateCanvasScale() {
         const stage = document.getElementById("vn-stage");
         const frame = getFrame();
@@ -979,16 +980,52 @@ body {
             ? viewport.height
             : window.innerHeight;
 
-        const scale = Math.min(
-            1,
-            width / DESIGN_WIDTH,
-            height / DESIGN_HEIGHT
-        );
+        // 仅将手机竖屏视为需要旋转的情况
+        const isMobile = window.matchMedia(
+            "(max-width: 767px) and (pointer: coarse)"
+        ).matches;
 
-        stage.style.width = (DESIGN_WIDTH * scale) + "px";
-        stage.style.height = (DESIGN_HEIGHT * scale) + "px";
+        const isPortrait = height > width;
+        const shouldRotate = isMobile && isPortrait;
 
-        // 保留原有缩放逻辑
+        let scale;
+
+        if (shouldRotate) {
+            // 旋转 90° 后，交换可用宽高
+            scale = Math.min(
+                1,
+                height / DESIGN_WIDTH,
+                width / DESIGN_HEIGHT
+            );
+
+            stage.style.width = (DESIGN_HEIGHT * scale) + "px";
+            stage.style.height = (DESIGN_WIDTH * scale) + "px";
+
+            stage.style.position = "fixed";
+            stage.style.left = "50%";
+            stage.style.top = "50%";
+            stage.style.margin = "0";
+            stage.style.transform =
+                "translate(-50%, -50%) rotate(90deg)";
+        } else {
+            // 桌面端和手机横屏：保留原有缩放逻辑
+            scale = Math.min(
+                1,
+                width / DESIGN_WIDTH,
+                height / DESIGN_HEIGHT
+            );
+
+            stage.style.width = (DESIGN_WIDTH * scale) + "px";
+            stage.style.height = (DESIGN_HEIGHT * scale) + "px";
+
+            stage.style.position = "";
+            stage.style.left = "";
+            stage.style.top = "";
+            stage.style.margin = "0 auto";
+            stage.style.transform = "";
+        }
+
+        // 保留原有画布缩放逻辑
         frame.style.transform = "scale(" + scale + ")";
     }
 
