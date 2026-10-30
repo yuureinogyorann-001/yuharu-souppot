@@ -670,7 +670,7 @@ body {
 }
 
 #vn-effect-overlay.is-black {
-    transition: opacity 2s ease;
+    transition: opacity 3s ease;
 }
 
 /* 插图位于对话框和选项下方、角色立绘上方 */
@@ -739,7 +739,7 @@ body {
     opacity: 0;
     pointer-events: none;
 
-	transition: opacity 1000ms cubic-bezier(0.22, 1, 0.36, 1);}
+	transition: opacity 2000ms cubic-bezier(0.22, 1, 0.36, 1);}
 
 /* 白屏覆盖画面 */
 #vn-transition-overlay.is-active {
@@ -998,8 +998,8 @@ body {
                 width / DESIGN_HEIGHT
             );
 
-            stage.style.width = (DESIGN_HEIGHT * scale) + "px";
-            stage.style.height = (DESIGN_WIDTH * scale) + "px";
+            stage.style.width = (DESIGN_WIDTH * scale) + "px";
+            stage.style.height = (DESIGN_HEIGHT * scale) + "px";
 
             stage.style.position = "fixed";
             stage.style.left = "50%";
