@@ -1211,7 +1211,36 @@ body {
                     );
                 }
 
-                resolve(true);
+                // 等待实际显示的图片完成解码
+                const finishLoading = function () {
+                    if (img.dataset.requestId !== String(requestId)) {
+                        resolve(false);
+                        return;
+                    }
+
+                    resolve(true);
+                };
+
+                if (typeof img.decode === "function") {
+                    img.decode()
+                        .then(finishLoading)
+                        .catch(function () {
+                            // 部分浏览器可能在图片已加载时仍拒绝 decode
+                            if (img.complete && img.naturalWidth > 0) {
+                                finishLoading();
+                            } else {
+                                resolve(false);
+                            }
+                        });
+                } else if (img.complete && img.naturalWidth > 0) {
+                    finishLoading();
+                } else {
+                    img.onload = finishLoading;
+                    img.onerror = function () {
+                        reportFailure(src, img, "portrait");
+                        resolve(false);
+                    };
+                }
             };
 
             preload.onerror = function () {
