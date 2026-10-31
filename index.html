@@ -946,14 +946,9 @@ body {
         });
     }
 
-	// 剧情文本音效
+    // 剧情文本音效（暂时停用）
     function playTypewriterSound() {
-        const audio = new Audio(TYPEWRITER_SOUND);
-        audio.volume = TYPEWRITER_VOLUME;
-
-        audio.play().catch(function (error) {
-            console.warn("[VN Typewriter] 音效播放失败：", error);
-        });
+        return;
     }
 
 
