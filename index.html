@@ -1469,87 +1469,113 @@ body {
         onCovered,
         dialogueTransition,
         overlayColor
-
     ) {
         const overlay = getTransitionOverlay();
 
+        // 立即锁定交互，防止重复推进
         isTransitioning = true;
         const token = ++transitionToken;
 
-        if (!overlay) {
-            try {
-                setDialogueVisibility(dialogueTransition);
+        try {
+            // 对话框动画
+            setDialogueVisibility(dialogueTransition);
+
+            // 没有遮罩节点时，直接更新 UI
+            if (!overlay) {
+                const illustrationPromise =
+                    path && path !== "clear" && path !== "hide"
+                        ? preloadIllustration(path)
+                        : Promise.resolve(true);
 
                 if (typeof onCovered === "function") {
                     await onCovered();
                 }
 
-                if (path !== null && path !== undefined) {
-                    showIllustration(path, layer, "cut");
-                }
-
-            } finally {
-                if (token === transitionToken) {
-                    isTransitioning = false;
-                }
-            }
-
-            return;
-        }
-
-        overlay.classList.toggle(
-            "is-black-transition",
-            overlayColor === "black"
-        );      
-
-        try {
-            // 先预加载目标插画，避免资源未就绪时启动转场
-            if (path && path !== "clear" && path !== "hide") {
-                const loaded = await preloadIllustration(path);
+                const loaded = await illustrationPromise;
 
                 if (token !== transitionToken) return;
 
-                if (!loaded) {
-                    console.warn("插画加载失败：", path);
-                    return;
+                if (path !== null && path !== undefined) {
+                    if (loaded) {
+                        showIllustration(path, layer, "cut");
+                    } else {
+                        console.warn("[VN] 插图加载失败：", path);
+                    }
                 }
+
+                return;
             }
 
-            if (token !== transitionToken) return;
+            // 设置遮罩颜色
+            overlay.classList.toggle(
+                "is-black-transition",
+                overlayColor === "black"
+            );
 
-            // 对话框动画与白屏淡入同时开始，不等待白屏结束
-            setDialogueVisibility(dialogueTransition);
-
-            // 第一阶段：白屏淡入
+            // 第一阶段：立即启动遮罩，不再等待插图加载
             overlay.classList.remove("is-instant");
             overlay.classList.add("is-active");
 
+            // 插图与遮罩动画并行加载
+            const illustrationPromise =
+                path && path !== "clear" && path !== "hide"
+                    ? preloadIllustration(path)
+                    : Promise.resolve(true);
+
+            // 等待遮罩完全覆盖画面
             await wait(550);
 
             if (token !== transitionToken) return;
 
-            // 第二阶段：白屏完全覆盖后，更新文字、SAN、角色和背景
+            // 如果插图尚未加载完成，继续在遮罩下等待
+            const loaded = await illustrationPromise;
+
+            if (token !== transitionToken) return;
+
+            if (!loaded) {
+                console.warn("[VN] 插图加载失败：", path);
+            }
+
+            // 第二阶段：更新文字、立绘、背景和其他 UI
             if (typeof onCovered === "function") {
                 await onCovered();
             }
 
-            // 在白屏遮挡下切换插画
-            // 在遮罩下切换插画
+            if (token !== transitionToken) return;
+
+            // 在遮罩下切换插图
+            // 插图加载失败时保留原有插图，不影响其他 UI 更新
             if (path !== null && path !== undefined) {
-                showIllustration(path, layer, "cut");
+                if (loaded) {
+                    showIllustration(path, layer, "cut");
+                }
             }
+
             // 确保浏览器有机会绘制新画面
             await new Promise(resolve => requestAnimationFrame(resolve));
 
             if (token !== transitionToken) return;
 
-            // 第三阶段：白屏淡出
+            // 第三阶段：遮罩淡出
             overlay.classList.remove("is-active");
 
             await wait(600);
-          	overlay.classList.remove("is-black-transition");
+
+            overlay.classList.remove("is-black-transition");
+
+        } catch (error) {
+            console.error("[VN] 转场执行失败：", error);
+
+            // 出错时避免遮罩永久停留
+            if (token === transitionToken && overlay) {
+                overlay.classList.remove(
+                    "is-active",
+                    "is-black-transition"
+                );
+            }
 
         } finally {
+            // 只有当前转场才能解除交互锁
             if (token === transitionToken) {
                 isTransitioning = false;
             }
