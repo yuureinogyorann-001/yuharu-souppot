@@ -1488,7 +1488,7 @@ body {
                         : Promise.resolve(true);
 
                 if (typeof onCovered === "function") {
-                    await onCovered();
+                    onCovered();
                 }
 
                 const loaded = await illustrationPromise;
