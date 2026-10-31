@@ -758,6 +758,8 @@ body {
     let current = null;
     let controlsInstalled = false;
     let resizeInstalled = false;
+    let startupPreloadStarted = false;
+    let startupPreloadReady = false;  
   
     let typingTimer = null;
     let isTyping = false;
@@ -772,6 +774,418 @@ body {
     const pendingAudios = new Map();
     const audioTimers = new Map();
 
+    // =========================
+    // 游戏启动资源预加载
+    // =========================
+
+    function collectStartupImagePaths() {
+        if (typeof Story === "undefined" ||
+            typeof Story.getAll !== "function") {
+            throw new Error("无法读取 SugarCube 剧情资源");
+        }
+
+        const paths = new Set();
+
+        // 遍历故事中的全部 passage
+        Story.getAll().forEach(function (passage) {
+            const holder = document.createElement("div");
+            holder.innerHTML = passage.text || "";
+
+            // 收集 VN 剧情行中的图片路径
+            holder.querySelectorAll(".vn-line").forEach(function (line) {
+                [
+                    "data-left",
+                    "data-right",
+                    "data-bg",
+                    "data-illustration"
+                ].forEach(function (attribute) {
+                    let path = line.getAttribute(attribute);
+
+                    if (path === null) return;
+
+                    path = path.trim();
+
+                    if (!path || /^(?:hide|none|clear)$/i.test(path)) {
+                        return;
+                    }
+
+                    try {
+                        paths.add(
+                            new URL(
+                                path.replace(/\\/g, "/"),
+                                document.baseURI
+                            ).href
+                        );
+                    } catch (error) {
+                        console.warn("[VN Preload] 无效图片路径：", path);
+                    }
+                });
+            });
+        });
+
+        return Array.from(paths);
+    }
+
+
+    // 加载单张图片
+    function preloadStartupImage(path) {
+        return new Promise(function (resolve) {
+            const image = new Image();
+            let finished = false;
+
+            const timer = setTimeout(function () {
+                finish(false);
+            }, 60000);
+
+            function finish(success) {
+                if (finished) return;
+
+                finished = true;
+                clearTimeout(timer);
+
+                image.onload = null;
+                image.onerror = null;
+
+                resolve(success);
+            }
+
+            image.onload = function () {
+                finish(true);
+            };
+
+            image.onerror = function () {
+                console.warn("[VN Preload] 图片加载失败：", path);
+                finish(false);
+            };
+
+            image.src = path;
+
+            if (image.complete && image.naturalWidth > 0) {
+                finish(true);
+            }
+        });
+    }
+
+
+    // 加载指定字体
+    function preloadStartupFont() {
+        if (!document.fonts || !document.fonts.load) {
+            return Promise.resolve(true);
+        }
+
+        return new Promise(function (resolve) {
+            let finished = false;
+
+            const timer = setTimeout(function () {
+                finish(false);
+            }, 45000);
+
+            function finish(success) {
+                if (finished) return;
+
+                finished = true;
+                clearTimeout(timer);
+                resolve(success);
+            }
+
+            document.fonts.load('16px "HYPixel"')
+                .then(function (faces) {
+                    finish(
+                        faces.length > 0 &&
+                        document.fonts.check('16px "HYPixel"')
+                    );
+                })
+                .catch(function () {
+                    finish(false);
+                });
+        });
+    }
+
+
+    // 限制同时加载的图片数量
+    function preloadStartupResources(onProgress) {
+        const paths = collectStartupImagePaths();
+
+        // 图片数量 + 字体
+        const total = paths.length + 1;
+
+        let completed = 0;
+        let cursor = 0;
+
+        const failed = [];
+
+        function report(name, success) {
+            completed++;
+
+            if (!success) {
+                failed.push(name);
+            }
+
+            onProgress({
+                completed: completed,
+                total: total,
+                name: name
+            });
+        }
+
+        async function imageWorker() {
+            while (cursor < paths.length) {
+                const index = cursor++;
+                const path = paths[index];
+
+                const success = await preloadStartupImage(path);
+
+                const name = path.split("/").pop();
+
+                report(name, success);
+            }
+        }
+
+        const workers = [];
+
+        const workerCount = Math.min(3, paths.length);
+
+        for (let i = 0; i < workerCount; i++) {
+            workers.push(imageWorker());
+        }
+
+        const fontTask = preloadStartupFont().then(function (success) {
+            report("HYPixel11pxU.ttf", success);
+        });
+
+        return Promise.all([
+            ...workers,
+            fontTask
+        ]).then(function () {
+            return {
+                total: total,
+                failed: failed
+            };
+        });
+    }
+
+
+    // =========================
+    // 启动画面
+    // =========================
+
+    function createStartupLoader() {
+        const screen = document.createElement("div");
+
+        screen.style.cssText = [
+            "position:fixed",
+            "inset:0",
+            "z-index:2147483647",
+            "display:flex",
+            "align-items:center",
+            "justify-content:center",
+            "box-sizing:border-box",
+            "padding:24px",
+            "background:#ffffff",
+            "color:#000000",
+            'font-family:"HYPixel",sans-serif'
+        ].join(";");
+
+        const panel = document.createElement("div");
+
+        panel.style.cssText = [
+            "width:100%",
+            "max-width:340px",
+            "text-align:center"
+        ].join(";");
+
+        const status = document.createElement("div");
+        status.textContent = "正在加载资源";
+
+        status.style.cssText = [
+            "font-size:18px",
+            "margin-bottom:22px",
+            "color:#000000"
+        ].join(";");
+
+        const track = document.createElement("div");
+
+        track.style.cssText = [
+            "height:2px",
+            "width:100%",
+            "background:#dddddd",
+            "overflow:hidden"
+        ].join(";");
+
+        const fill = document.createElement("div");
+
+        fill.style.cssText = [
+            "width:0%",
+            "height:100%",
+            "background:#000000",
+            "transition:width 0.15s linear"
+        ].join(";");
+
+        track.appendChild(fill);
+
+        const counter = document.createElement("div");
+        counter.textContent = "0 / 0";
+
+        counter.style.cssText = [
+            "font-size:12px",
+            "margin-top:10px",
+            "text-align:right",
+            "color:#000000"
+        ].join(";");
+
+        const detail = document.createElement("div");
+        detail.textContent = "请稍候";
+
+        detail.style.cssText = [
+            "font-size:12px",
+            "margin-top:20px",
+            "color:#555555",
+            "overflow-wrap:anywhere"
+        ].join(";");
+
+        const actions = document.createElement("div");
+
+        actions.style.cssText = [
+            "display:flex",
+            "justify-content:center",
+            "gap:12px",
+            "margin-top:28px"
+        ].join(";");
+
+        function createButton(label) {
+            const button = document.createElement("button");
+
+            button.textContent = label;
+            button.hidden = true;
+
+            button.style.cssText = [
+                "padding:10px 22px",
+                "border:1px solid #000000",
+                "background:#ffffff",
+                "color:#000000",
+                'font-family:"HYPixel",sans-serif',
+                "font-size:14px",
+                "cursor:pointer"
+            ].join(";");
+
+            actions.appendChild(button);
+
+            return button;
+        }
+
+        const startButton = createButton("开始游戏");
+        const retryButton = createButton("重新加载");
+        const continueButton = createButton("仍然开始");
+
+        panel.appendChild(status);
+        panel.appendChild(track);
+        panel.appendChild(counter);
+        panel.appendChild(detail);
+        panel.appendChild(actions);
+
+        screen.appendChild(panel);
+        document.body.appendChild(screen);
+
+        return {
+            update: function (progress) {
+                const percentage = Math.round(
+                    progress.completed / progress.total * 100
+                );
+
+                fill.style.width = percentage + "%";
+
+                counter.textContent =
+                    progress.completed + " / " + progress.total;
+
+                detail.textContent = "正在加载：" + progress.name;
+            },
+
+            setLoading: function () {
+                status.textContent = "正在加载资源";
+                detail.textContent = "请稍候";
+
+                startButton.hidden = true;
+                retryButton.hidden = true;
+                continueButton.hidden = true;
+
+                fill.style.width = "0%";
+                counter.textContent = "0 / 0";
+            },
+
+            showResult: function (result, onRetry, onStart) {
+                if (result.failed.length === 0) {
+                    status.textContent = "资源准备完成";
+                    detail.textContent = "所有图片与字体已加载";
+
+                    startButton.hidden = false;
+                    startButton.onclick = onStart;
+
+                } else {
+                    status.textContent = "部分资源加载失败";
+
+                    detail.textContent =
+                        result.failed.length +
+                        " 项资源未能加载：" +
+                        result.failed.slice(0, 3).join("、");
+
+                    retryButton.hidden = false;
+                    retryButton.onclick = onRetry;
+
+                    continueButton.hidden = false;
+                    continueButton.onclick = onStart;
+                }
+            },
+
+            remove: function () {
+                screen.remove();
+            }
+        };
+    }
+
+
+    // 启动预加载流程
+    function startStartupPreload() {
+        const loader = createStartupLoader();
+
+        function startGame() {
+            if (startupPreloadReady) return;
+
+            startupPreloadReady = true;
+
+            loader.remove();
+
+            // 预加载完成后，才正式启动原来的 VN 引擎
+            loadCurrentPassage();
+            refreshPlayerStats();
+        }
+
+        function runPreload() {
+            loader.setLoading();
+
+            preloadStartupResources(function (progress) {
+                loader.update(progress);
+            }).then(function (result) {
+                loader.showResult(
+                    result,
+                    runPreload,
+                    startGame
+                );
+            }).catch(function (error) {
+                console.error("[VN Preload] 预加载过程出错：", error);
+
+                loader.showResult(
+                    {
+                        failed: ["无法读取剧情资源清单"]
+                    },
+                    runPreload,
+                    startGame
+                );
+            });
+        }
+
+        runPreload();
+    }  
+  
     // =========================
     // 音频系统
     // =========================
