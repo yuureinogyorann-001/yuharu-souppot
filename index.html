@@ -1889,8 +1889,6 @@ body {
     // =========================
 
     function advance() {
-        if (isTransitioning) return;
-
         if (!current || current.waitingForChoice || current.ended) return;
 
         if (isTyping) {
