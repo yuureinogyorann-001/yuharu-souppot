@@ -104,7 +104,7 @@ var LZString=function(){var r=String.fromCharCode,o="ABCDEFGHIJKLMNOPQRSTUVWXYZa
 		<div id="init-lacking"><p>Browser lacks capabilities required to play.</p><p>Upgrade or switch to another browser.</p></div>
 		<div id="init-loading"><div>Loading&hellip;</div></div>
 	</div>
-	<tw-storydata name="汤锅" startnode="13" creator="Twine" creator-version="2.12.1" format="SugarCube" format-version="2.37.3" ifid="D2D0CF48-1AA6-4F83-AD96-FF4BB2FC10D0" options="" tags="" zoom="1" hidden><style role="stylesheet" id="twine-user-stylesheet" type="text/twine-css">
+	<tw-storydata name="汤锅" startnode="13" creator="Twine" creator-version="2.12.1" format="SugarCube" format-version="2.37.3" ifid="D2D0CF48-1AA6-4F83-AD96-FF4BB2FC10D0" options="" tags="" zoom="0.3" hidden><style role="stylesheet" id="twine-user-stylesheet" type="text/twine-css">
 /*1. 全局参数*/
 @font-face {
     font-family: "HYPixel";
@@ -1473,23 +1473,30 @@ body {
     ) {
         const overlay = getTransitionOverlay();
 
+        isTransitioning = true;
+        const token = ++transitionToken;
+
         if (!overlay) {
-            setDialogueVisibility(dialogueTransition);
+            try {
+                setDialogueVisibility(dialogueTransition);
 
-            if (typeof onCovered === "function") {
-                await onCovered();
-            }
+                if (typeof onCovered === "function") {
+                    await onCovered();
+                }
 
-            if (path !== null && path !== undefined) {
-                showIllustration(path, layer, "cut");
+                if (path !== null && path !== undefined) {
+                    showIllustration(path, layer, "cut");
+                }
+
+            } finally {
+                if (token === transitionToken) {
+                    isTransitioning = false;
+                }
             }
 
             return;
         }
 
-        isTransitioning = true;
-        const token = ++transitionToken;
-      
         overlay.classList.toggle(
             "is-black-transition",
             overlayColor === "black"
@@ -1867,6 +1874,8 @@ body {
 
             button.addEventListener("click", function (event) {
                 event.stopPropagation();
+              
+              	if (isTransitioning) return;
 
                 if (!current || !current.waitingForChoice) return;
 
@@ -1889,6 +1898,8 @@ body {
     // =========================
 
     function advance() {
+        if (isTransitioning) return;
+
         if (!current || current.waitingForChoice || current.ended) return;
 
         if (isTyping) {
