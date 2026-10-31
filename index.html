@@ -2429,6 +2429,16 @@ body {
 
         installControls();
 
+        // 首次进入游戏时，先完成资源预加载
+        if (!startupPreloadReady) {
+            if (!startupPreloadStarted) {
+                startupPreloadStarted = true;
+                startStartupPreload();
+            }
+
+            return;
+        }
+
         loadCurrentPassage();
         refreshPlayerStats();
     });
